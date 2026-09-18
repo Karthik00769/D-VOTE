@@ -1,0 +1,40 @@
+name: Deploy Contracts and Sync Frontend
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18
+      - name: Install dependencies
+        run: npm install
+      - name: Compile contracts
+        run: npx hardhat compile
+      - name: Deploy to Sepolia
+        env:
+          ALCHEMY_API_KEY: ${{ secrets.ALCHEMY_API_KEY }}
+          PRIVATE_KEY: ${{ secrets.PRIVATE_KEY }}
+        run: |
+          npx hardhat run scripts/deploy.js --network sepolia > deployment.log
+          grep 'Contract deployed to:' deployment.log | awk '{print $4}' > ../frontend/contract-address.txt
+      - name: Sync contract address to frontend env
+        run: |
+          echo "NEXT_PUBLIC_CONTRACT_ADDRESS=$(cat ../frontend/contract-address.txt)" > ../frontend/.env.production
+      - name: Commit and push contract address
+        run: |
+          git config --global user.name "github-actions"
+          git config --global user.email "github-actions@github.com"
+          git add ../frontend/.env.production ../frontend/contract-address.txt
+          git commit -m "Update contract address [skip ci]" || echo "No changes to commit"
+          git push
